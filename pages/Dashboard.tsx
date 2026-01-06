@@ -27,7 +27,7 @@ const TokenCard: React.FC<TokenCardProps> = ({ address }) => {
     <Link to={`/token/${address}`} className="group card-bg pump-border rounded-xl p-4 hover:border-green-500/50 transition-all hover:scale-[1.01] cursor-pointer block relative overflow-hidden">
       {isGraduated && (
         <div className="absolute top-0 right-0 bg-yellow-500 text-black px-2 py-0.5 text-[10px] font-bold uppercase z-10">
-          已上线 Uniswap
+          已上线 Uniswap (Base)
         </div>
       )}
       
@@ -74,9 +74,7 @@ export default function Dashboard() {
   const publicClient = usePublicClient();
   const { address: userAddress, isConnected } = useAccount();
 
-  // Core Stats
   const { data: coreName } = useReadContract({ address: CORE_ADDRESS as `0x${string}`, abi: CORE_ABI, functionName: 'name' });
-  const { data: coreSymbol } = useReadContract({ address: CORE_ADDRESS as `0x${string}`, abi: CORE_ABI, functionName: 'symbol' });
   const { data: coreTotalSupply } = useReadContract({ address: CORE_ADDRESS as `0x${string}`, abi: CORE_ABI, functionName: 'totalSupply' });
   const { data: userCoreBalance } = useReadContract({ address: CORE_ADDRESS as `0x${string}`, abi: CORE_ABI, functionName: 'balanceOf', args: [userAddress || '0x0000000000000000000000000000000000000000'] });
 
@@ -96,8 +94,7 @@ export default function Dashboard() {
       if (!publicClient) return;
       const loaded: `0x${string}`[] = [];
       try {
-        // We iterate and try to find all sub-tokens
-        for (let i = 0; i < 100; i++) {
+        for (let i = 0; i < 50; i++) {
           try {
             const addr = await publicClient.readContract({
               address: CORE_ADDRESS as `0x${string}`,
@@ -124,18 +121,20 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-10">
-      {/* Hero Section */}
-      <section className="relative py-12 px-6 rounded-3xl overflow-hidden bg-gradient-to-br from-green-500/10 via-black to-blue-500/5 pump-border">
+      <section className="relative py-12 px-6 rounded-3xl overflow-hidden bg-gradient-to-br from-blue-500/10 via-black to-green-500/5 pump-border">
         <div className="absolute top-0 right-0 p-8 opacity-10">
-          <div className="w-64 h-64 border-4 border-green-500 rounded-full animate-pulse"></div>
+          <div className="w-64 h-64 border-4 border-blue-500 rounded-full animate-pulse"></div>
         </div>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
           <div className="max-w-2xl">
-            <h1 className="text-5xl md:text-7xl font-extrabold mb-4 tracking-tighter">
-              FAIR<span className="text-green-500">PRAEM</span>
-            </h1>
+            <div className="flex items-center gap-3 mb-4">
+               <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter">
+                FAIR<span className="text-green-500">PRAEM</span>
+              </h1>
+              <span className="bg-blue-500 text-white text-[10px] font-bold px-2 py-1 rounded uppercase mt-4">Base Sepolia</span>
+            </div>
             <p className="text-xl text-gray-400 font-medium">
-              基于 FairPraem 协议的去中心化代币发射站。
+              Base Sepolia 上的去中心化代币发射站。
               <br className="hidden md:block" />
               公平启动，联合曲线，永久流动性销毁。
             </p>
@@ -149,7 +148,6 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* Protocol Dashboard */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card-bg pump-border rounded-2xl p-4">
           <p className="text-[10px] text-gray-500 uppercase font-bold mb-1 font-mono">核心代币</p>
@@ -175,7 +173,7 @@ export default function Dashboard() {
 
       <div className="space-y-6">
         <div className="flex items-center justify-between border-b border-white/10 pb-4">
-          <h2 className="text-2xl font-bold font-mono tracking-widest uppercase">最新发射盘</h2>
+          <h2 className="text-2xl font-bold font-mono tracking-widest uppercase">Base Sepolia 最新发射</h2>
           <div className="flex gap-2 text-xs font-mono">
             <span className="text-green-500 bg-green-500/10 px-2 py-1 rounded">LIVE</span>
             <span className="text-gray-500 px-2 py-1">Total: {tokens.length}</span>
@@ -184,7 +182,7 @@ export default function Dashboard() {
 
         {isGovSuccess && (
           <div className="bg-green-500/10 border border-green-500/20 text-green-500 p-4 rounded-xl text-center text-sm font-mono animate-bounce">
-            SUCCESS: 治理代币已领取至您的钱包!
+            SUCCESS: 治理代币已领取!
           </div>
         )}
 
@@ -193,7 +191,7 @@ export default function Dashboard() {
             <div className="col-span-full py-32 text-center text-gray-500 border-2 border-dashed border-white/5 rounded-3xl">
               <div className="mb-4 text-4xl">🛸</div>
               <p className="text-xl font-bold mb-2">太安静了...</p>
-              <p className="text-sm font-mono">还没有代币被部署。去创造历史吧。</p>
+              <p className="text-sm font-mono">还没有代币被部署。在 Base Sepolia 上创造历史吧。</p>
             </div>
           ) : (
             tokens.map((addr) => (
