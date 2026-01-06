@@ -4,20 +4,36 @@ import { Link } from 'react-router-dom';
 import { useReadContract, usePublicClient, useWriteContract, useAccount, useWaitForTransactionReceipt } from 'wagmi';
 import { CORE_ADDRESS, CORE_ABI, SUBTOKEN_ABI } from '../constants';
 import { formatEther } from 'viem';
+import { baseSepolia } from 'wagmi/chains';
 
 interface TokenCardProps {
   address: `0x${string}`;
 }
 
 const TokenCard: React.FC<TokenCardProps> = ({ address }) => {
-  const { data: name } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'name' });
-  const { data: symbol } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'symbol' });
-  const { data: progress } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'getProgress' });
-  const { data: price } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'getCurrentPrice' });
-  const { data: isGraduated } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'isGraduated' });
-  const { data: totalSupply } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'totalSupply' });
+  // 显式指定 chainId 确保数据来自 Base Sepolia
+  const { data: name } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'name', chainId: baseSepolia.id });
+  const { data: symbol } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'symbol', chainId: baseSepolia.id });
+  const { data: progress } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'getProgress', chainId: baseSepolia.id });
+  const { data: price } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'getCurrentPrice', chainId: baseSepolia.id });
+  const { data: isGraduated } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'isGraduated', chainId: baseSepolia.id });
+  const { data: totalSupply } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'totalSupply', chainId: baseSepolia.id });
 
-  if (!name || !symbol) return null;
+  if (!name || !symbol) return (
+    <div className="card-bg pump-border rounded-xl p-4 h-48 animate-pulse flex flex-col justify-between">
+      <div className="flex gap-4">
+        <div className="w-14 h-14 bg-white/5 rounded-lg"></div>
+        <div className="flex-1 space-y-2">
+          <div className="h-4 bg-white/5 rounded w-3/4"></div>
+          <div className="h-3 bg-white/5 rounded w-1/2"></div>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-2 bg-white/5 rounded w-full"></div>
+        <div className="h-2 bg-white/5 rounded w-full"></div>
+      </div>
+    </div>
+  );
 
   const mcap = price && totalSupply 
     ? parseFloat(formatEther((price as bigint * totalSupply as bigint) / BigInt(1e18))) 
@@ -71,12 +87,34 @@ const TokenCard: React.FC<TokenCardProps> = ({ address }) => {
 
 export default function Dashboard() {
   const [tokens, setTokens] = useState<`0x${string}`[]>([]);
+  const [isLoadingList, setIsLoadingList] = useState(true);
   const publicClient = usePublicClient();
   const { address: userAddress, isConnected } = useAccount();
 
-  const { data: coreName } = useReadContract({ address: CORE_ADDRESS as `0x${string}`, abi: CORE_ABI, functionName: 'name' });
-  const { data: coreTotalSupply } = useReadContract({ address: CORE_ADDRESS as `0x${string}`, abi: CORE_ABI, functionName: 'totalSupply' });
-  const { data: userCoreBalance } = useReadContract({ address: CORE_ADDRESS as `0x${string}`, abi: CORE_ABI, functionName: 'balanceOf', args: [userAddress || '0x0000000000000000000000000000000000000000'] });
+  // 核心合约数据读取，显式指定 chainId
+  const { data: coreName } = useReadContract({ 
+    address: CORE_ADDRESS as `0x${string}`, 
+    abi: CORE_ABI, 
+    functionName: 'name', 
+    chainId: baseSepolia.id 
+  });
+  const { data: coreTotalSupply } = useReadContract({ 
+    address: CORE_ADDRESS as `0x${string}`, 
+    abi: CORE_ABI, 
+    functionName: 'totalSupply', 
+    chainId: baseSepolia.id 
+  });
+  const { data: userCoreBalance } = useReadContract({ 
+    address: CORE_ADDRESS as `0x${string}`, 
+    abi: CORE_ABI, 
+    functionName: 'balanceOf', 
+    args: [userAddress || '0x0000000000000000000000000000000000000000'],
+    chainId: baseSepolia.id,
+    query: {
+      enabled: !!userAddress,
+      refetchInterval: 5000
+    }
+  });
 
   const { writeContract, data: govHash, isPending: isGovPending } = useWriteContract();
   const { isLoading: isGovConfirming, isSuccess: isGovSuccess } = useWaitForTransactionReceipt({ hash: govHash });
@@ -92,9 +130,11 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchTokens = async () => {
       if (!publicClient) return;
+      setIsLoadingList(true);
       const loaded: `0x${string}`[] = [];
       try {
-        for (let i = 0; i < 50; i++) {
+        // 尝试加载前 30 个代币
+        for (let i = 0; i < 30; i++) {
           try {
             const addr = await publicClient.readContract({
               address: CORE_ADDRESS as `0x${string}`,
@@ -108,12 +148,15 @@ export default function Dashboard() {
               break;
             }
           } catch (e) {
+            // 达到数组末尾
             break;
           }
         }
         setTokens(loaded.reverse());
       } catch (err) {
         console.error("Error fetching tokens:", err);
+      } finally {
+        setIsLoadingList(false);
       }
     };
     fetchTokens();
@@ -151,7 +194,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card-bg pump-border rounded-2xl p-4">
           <p className="text-[10px] text-gray-500 uppercase font-bold mb-1 font-mono">核心代币</p>
-          <p className="text-lg font-bold text-green-500 truncate">{coreName?.toString() || '...'}</p>
+          <p className="text-lg font-bold text-green-500 truncate">{coreName?.toString() || '读取中...'}</p>
         </div>
         <div className="card-bg pump-border rounded-2xl p-4">
           <p className="text-[10px] text-gray-500 uppercase font-bold mb-1 font-mono">总发行量</p>
@@ -159,24 +202,31 @@ export default function Dashboard() {
         </div>
         <div className="card-bg pump-border rounded-2xl p-4">
           <p className="text-[10px] text-gray-500 uppercase font-bold mb-1 font-mono">我的余额</p>
-          <p className="text-lg font-bold text-blue-400 truncate">{userCoreBalance ? parseFloat(formatEther(userCoreBalance as bigint)).toLocaleString() : '0'}</p>
+          <p className={`text-lg font-bold truncate ${isConnected ? 'text-blue-400' : 'text-gray-600'}`}>
+            {isConnected ? (userCoreBalance ? parseFloat(formatEther(userCoreBalance as bigint)).toLocaleString() : '...') : '未连接'}
+          </p>
         </div>
         <button 
           onClick={handleClaimGov}
           disabled={!isConnected || isGovPending || isGovConfirming}
-          className="card-bg pump-border rounded-2xl p-4 hover:bg-white/5 transition-colors disabled:opacity-50"
+          className="card-bg pump-border rounded-2xl p-4 hover:bg-white/5 transition-colors disabled:opacity-50 group"
         >
-          <p className="text-[10px] text-gray-500 uppercase font-bold mb-1 font-mono">操作</p>
-          <p className="text-lg font-bold text-yellow-500">{isGovPending || isGovConfirming ? '处理中...' : '领取治理奖励'}</p>
+          <p className="text-[10px] text-gray-500 uppercase font-bold mb-1 font-mono">核心代币操作</p>
+          <p className="text-lg font-bold text-yellow-500 group-hover:text-yellow-400">
+            {isGovPending || isGovConfirming ? '处理中...' : '领取治理奖励'}
+          </p>
         </button>
       </div>
 
       <div className="space-y-6">
         <div className="flex items-center justify-between border-b border-white/10 pb-4">
-          <h2 className="text-2xl font-bold font-mono tracking-widest uppercase">Base Sepolia 最新发射</h2>
+          <h2 className="text-2xl font-bold font-mono tracking-widest uppercase flex items-center gap-3">
+            Base Sepolia 最新发射
+            {isLoadingList && <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>}
+          </h2>
           <div className="flex gap-2 text-xs font-mono">
             <span className="text-green-500 bg-green-500/10 px-2 py-1 rounded">LIVE</span>
-            <span className="text-gray-500 px-2 py-1">Total: {tokens.length}</span>
+            <span className="text-gray-500 px-2 py-1 bg-white/5 rounded">已发现: {tokens.length}</span>
           </div>
         </div>
 
@@ -187,11 +237,15 @@ export default function Dashboard() {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {tokens.length === 0 ? (
+          {isLoadingList && tokens.length === 0 ? (
+            Array(4).fill(0).map((_, i) => <div key={i} className="card-bg pump-border rounded-xl p-4 h-48 animate-pulse bg-white/5"></div>)
+          ) : tokens.length === 0 ? (
             <div className="col-span-full py-32 text-center text-gray-500 border-2 border-dashed border-white/5 rounded-3xl">
               <div className="mb-4 text-4xl">🛸</div>
-              <p className="text-xl font-bold mb-2">太安静了...</p>
-              <p className="text-sm font-mono">还没有代币被部署。在 Base Sepolia 上创造历史吧。</p>
+              <p className="text-xl font-bold mb-2">未发现任何代币</p>
+              <p className="text-sm font-mono opacity-60 max-w-xs mx-auto">
+                请确保你的合约已部署在 <span className="text-blue-400">Base Sepolia</span> (0x84532) 且地址 {CORE_ADDRESS} 正确。
+              </p>
             </div>
           ) : (
             tokens.map((addr) => (
