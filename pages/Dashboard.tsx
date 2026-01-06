@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { useReadContract, usePublicClient, useWriteContract, useAccount, useWaitForTransactionReceipt } from 'wagmi';
+import { useReadContract, usePublicClient, useWriteContract, useAccount, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
 import { CORE_ADDRESS, CORE_ABI, SUBTOKEN_ABI } from '../constants';
-import { formatEther } from 'viem';
+import { formatEther, parseEther } from 'viem';
 import { baseSepolia } from 'wagmi/chains';
 
 interface TokenCardProps {
@@ -11,7 +11,6 @@ interface TokenCardProps {
 }
 
 const TokenCard: React.FC<TokenCardProps> = ({ address }) => {
-  // 必须显式添加 chainId: baseSepolia.id 确保读取正确
   const { data: name } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'name', chainId: baseSepolia.id });
   const { data: symbol } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'symbol', chainId: baseSepolia.id });
   const { data: progress } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'getProgress', chainId: baseSepolia.id });
@@ -20,10 +19,10 @@ const TokenCard: React.FC<TokenCardProps> = ({ address }) => {
   const { data: totalSupply } = useReadContract({ address, abi: SUBTOKEN_ABI, functionName: 'totalSupply', chainId: baseSepolia.id });
 
   if (!name || !symbol) return (
-    <div className="card-bg pump-border rounded-xl p-4 h-52 animate-pulse flex flex-col justify-between">
-      <div className="h-14 w-14 bg-white/5 rounded-lg"></div>
-      <div className="space-y-2">
-        <div className="h-4 bg-white/5 rounded w-3/4"></div>
+    <div className="card-bg border border-white/5 rounded-3xl p-6 h-60 animate-pulse flex flex-col justify-between">
+      <div className="w-16 h-16 bg-white/5 rounded-2xl"></div>
+      <div className="space-y-3">
+        <div className="h-5 bg-white/5 rounded w-3/4"></div>
         <div className="h-3 bg-white/5 rounded w-1/2"></div>
       </div>
       <div className="h-2 bg-white/5 rounded w-full"></div>
@@ -35,37 +34,40 @@ const TokenCard: React.FC<TokenCardProps> = ({ address }) => {
     : 0;
 
   return (
-    <Link to={`/token/${address}`} className="group card-bg pump-border rounded-2xl p-5 hover:border-green-500/50 transition-all hover:scale-[1.02] cursor-pointer block relative overflow-hidden">
-      <div className="flex items-center gap-4 mb-4">
-        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-green-500/10 to-blue-500/10 flex items-center justify-center text-green-500 font-bold text-2xl border border-white/5">
+    <Link to={`/token/${address}`} className="group card-bg border border-white/10 rounded-[2rem] p-6 hover:border-green-500/50 transition-all hover:scale-[1.03] cursor-pointer block relative overflow-hidden shadow-2xl">
+      <div className="flex items-center gap-5 mb-6">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-500/20 to-blue-500/20 flex items-center justify-center text-green-500 font-black text-3xl border border-white/5 shadow-inner">
           {symbol.toString().slice(0, 1)}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-lg truncate group-hover:text-green-400 transition-colors">{name.toString()}</h3>
-          <p className="text-xs text-gray-500 font-mono uppercase truncate">{symbol.toString()}</p>
+          <h3 className="font-black text-xl truncate group-hover:text-green-400 transition-colors">{name.toString()}</h3>
+          <p className="text-xs text-gray-500 font-mono uppercase tracking-widest">{symbol.toString()}</p>
         </div>
       </div>
       
-      <div className="space-y-4">
+      <div className="space-y-5">
         <div className="flex justify-between items-end">
           <div>
-            <p className="text-[10px] text-gray-500 uppercase font-mono">市值 (ETH)</p>
-            <p className="text-sm font-bold text-gray-200">{mcap.toFixed(6)} ETH</p>
+            <p className="text-[10px] text-gray-500 uppercase font-black font-mono mb-1">Market Cap</p>
+            <p className="text-lg font-black text-gray-100">{mcap.toFixed(4)} <span className="text-[10px] text-gray-500">ETH</span></p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] text-gray-500 uppercase font-mono">进度</p>
-            <p className="text-sm font-bold text-green-400">{progress?.toString()}%</p>
+            <p className="text-[10px] text-gray-500 uppercase font-black font-mono mb-1">Progress</p>
+            <p className="text-lg font-black text-green-500">{progress?.toString()}%</p>
           </div>
         </div>
 
-        <div className="w-full bg-black rounded-full h-2 overflow-hidden border border-white/5">
+        <div className="w-full bg-black rounded-full h-2.5 overflow-hidden border border-white/5 p-0.5">
           <div 
-            className={`h-full transition-all duration-700 ${isGraduated ? 'bg-yellow-500' : 'pump-gradient'}`}
+            className={`h-full rounded-full transition-all duration-1000 ${isGraduated ? 'bg-yellow-500' : 'pump-gradient'}`}
             style={{ width: `${progress?.toString() || 0}%` }}
           />
         </div>
         
-        <p className="text-[9px] text-gray-600 font-mono truncate">{address}</p>
+        <div className="flex items-center justify-between">
+            <p className="text-[9px] text-gray-600 font-mono truncate max-w-[120px]">{address}</p>
+            {isGraduated && <span className="text-[9px] font-black text-yellow-500 uppercase">Graduated</span>}
+        </div>
       </div>
     </Link>
   );
@@ -74,10 +76,63 @@ const TokenCard: React.FC<TokenCardProps> = ({ address }) => {
 export default function Dashboard() {
   const [tokens, setTokens] = useState<`0x${string}`[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lpEthAmount, setLpEthAmount] = useState<string>('0.1');
+  
   const publicClient = usePublicClient({ chainId: baseSepolia.id });
   const { address: userAddress, isConnected } = useAccount();
 
-  // 核心合约数据，强制 Base Sepolia
+  // 1. 获取代币列表的核心逻辑
+  const fetchTokens = useCallback(async (showLoading = false) => {
+    if (!publicClient) return;
+    if (showLoading) setIsLoadingList(true);
+    setIsRefreshing(true);
+    
+    const loaded: `0x${string}`[] = [];
+    try {
+      for (let i = 0; i < 50; i++) {
+        try {
+          const addr = await publicClient.readContract({
+            address: CORE_ADDRESS as `0x${string}`,
+            abi: CORE_ABI as any,
+            functionName: 'allSubTokens',
+            args: [BigInt(i)]
+          });
+          
+          if (addr && addr !== '0x0000000000000000000000000000000000000000') {
+            loaded.push(addr as `0x${string}`);
+          } else {
+            break; 
+          }
+        } catch (e) {
+          break;
+        }
+      }
+      setTokens(loaded.reverse());
+    } catch (err) {
+      console.error("Dashboard: 列表抓取失败:", err);
+    } finally {
+      setIsLoadingList(false);
+      setIsRefreshing(false);
+    }
+  }, [publicClient]);
+
+  useEffect(() => {
+    fetchTokens(true);
+    const timer = setInterval(() => fetchTokens(false), 15000);
+    return () => clearInterval(timer);
+  }, [fetchTokens]);
+
+  useWatchContractEvent({
+    address: CORE_ADDRESS as `0x${string}`,
+    abi: CORE_ABI,
+    eventName: 'OrgLaunched',
+    chainId: baseSepolia.id,
+    onLogs() {
+      fetchTokens(false);
+    },
+  });
+
   const { data: coreName } = useReadContract({ 
     address: CORE_ADDRESS as `0x${string}`, 
     abi: CORE_ABI, 
@@ -90,121 +145,157 @@ export default function Dashboard() {
     abi: CORE_ABI, 
     functionName: 'balanceOf', 
     args: [userAddress || '0x0000000000000000000000000000000000000000'],
-    chainId: baseSepolia.id,
-    query: {
-      enabled: !!userAddress,
-      refetchInterval: 5000
-    }
+    chainId: baseSepolia.id
   });
 
-  const { writeContract, data: govHash, isPending: isGovPending } = useWriteContract();
-  const { isLoading: isGovConfirming, isSuccess: isGovSuccess } = useWaitForTransactionReceipt({ hash: govHash });
+  const { data: lpIsAdded, refetch: refetchLpStatus } = useReadContract({
+    address: CORE_ADDRESS as `0x${string}`,
+    abi: CORE_ABI,
+    functionName: 'initialLiquidityAdded',
+    chainId: baseSepolia.id
+  });
+
+  const { writeContract, data: txHash, isPending: isTxPending } = useWriteContract();
+  const { isLoading: isTxConfirming, isSuccess: isTxSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+
+  const handleAddLp = () => {
+    if (!lpEthAmount || isNaN(parseFloat(lpEthAmount))) return;
+    writeContract({
+      address: CORE_ADDRESS as `0x${string}`,
+      abi: CORE_ABI as any,
+      functionName: 'addInitialLiquidityAndBurnLP',
+      value: parseEther(lpEthAmount)
+    });
+  };
 
   useEffect(() => {
-    const fetchTokens = async () => {
-      if (!publicClient) return;
-      setIsLoadingList(true);
-      const loaded: `0x${string}`[] = [];
-      try {
-        // 尝试加载最新的 20 个代币
-        for (let i = 0; i < 20; i++) {
-          try {
-            const addr = await publicClient.readContract({
-              address: CORE_ADDRESS as `0x${string}`,
-              abi: CORE_ABI as any,
-              functionName: 'allSubTokens',
-              args: [BigInt(i)]
-            });
-            if (addr && addr !== '0x0000000000000000000000000000000000000000') {
-              loaded.push(addr as `0x${string}`);
-            } else {
-              break;
-            }
-          } catch (e) {
-            break;
-          }
-        }
-        setTokens(loaded.reverse());
-      } catch (err) {
-        console.error("Dashboard: Error fetching tokens:", err);
-      } finally {
-        setIsLoadingList(false);
-      }
-    };
-    fetchTokens();
-  }, [publicClient]);
+    if (isTxSuccess) refetchLpStatus();
+  }, [isTxSuccess, refetchLpStatus]);
 
   return (
-    <div className="space-y-10">
-      <section className="relative py-16 px-8 rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-green-500/10 via-[#0d0d0d] to-blue-500/5 border border-white/10">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-10">
-          <div className="max-w-xl">
-            <h1 className="text-6xl md:text-8xl font-black tracking-tighter mb-6 leading-none">
-              PUMP <span className="text-green-500">FAIR</span>
+    <div className="space-y-12">
+      <section className="relative py-20 px-10 rounded-[3rem] overflow-hidden bg-[#111] border border-white/5">
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-green-500/10 to-transparent"></div>
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-12">
+          <div className="max-w-2xl">
+            <div className="inline-block bg-green-500/10 border border-green-500/20 text-green-500 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest mb-6">
+              Official Base Sepolia Launchpad
+            </div>
+            <h1 className="text-6xl md:text-8xl font-black tracking-tighter mb-8 leading-[0.9]">
+              START <span className="text-green-500">FAIR</span><br />
+              PUMP <span className="text-blue-500">HARD</span>
             </h1>
-            <p className="text-lg text-gray-400 font-medium font-mono">
-              在 Base Sepolia 上安全地发射您的代币。
+            <p className="text-xl text-gray-400 font-medium font-mono leading-relaxed">
+              Base Sepolia 上的首个联合曲线发射平台。
               <br />
-              合约地址: <span className="text-gray-500 text-xs break-all">{CORE_ADDRESS}</span>
+              核心合约: <span className="text-gray-600 text-xs break-all selection:bg-green-500/30">{CORE_ADDRESS}</span>
             </p>
           </div>
           <Link 
             to="/create" 
-            className="group relative inline-flex items-center justify-center px-12 py-6 font-black text-black transition-all duration-300 bg-green-500 rounded-2xl hover:bg-green-400 hover:scale-105 shadow-[0_0_50px_rgba(34,197,94,0.3)]"
+            className="group relative inline-flex items-center justify-center px-16 py-8 font-black text-black transition-all duration-300 bg-green-500 rounded-3xl hover:bg-green-400 hover:scale-105 shadow-[0_20px_60px_-15px_rgba(34,197,94,0.5)] active:scale-95"
           >
-            发布我的代币
+            发布新代币
           </Link>
         </div>
       </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="card-bg pump-border rounded-2xl p-6">
-          <p className="text-[10px] text-gray-500 uppercase font-black mb-1 font-mono tracking-widest">核心合约</p>
-          <p className="text-xl font-bold text-green-500">{coreName?.toString() || '连接中...'}</p>
-        </div>
-        <div className="card-bg pump-border rounded-2xl p-6">
-          <p className="text-[10px] text-gray-500 uppercase font-black mb-1 font-mono tracking-widest">我的测试币余额</p>
-          <p className="text-xl font-bold text-blue-400 truncate">
-            {isConnected ? (userCoreBalance ? `${parseFloat(formatEther(userCoreBalance as bigint)).toLocaleString()} PRM` : '0.00') : '未连接'}
-          </p>
-        </div>
-        <button 
-          onClick={() => writeContract({ address: CORE_ADDRESS as `0x${string}`, abi: CORE_ABI as any, functionName: 'claimGovernanceTokens' })}
-          disabled={!isConnected || isGovPending || isGovConfirming}
-          className="card-bg pump-border rounded-2xl p-6 hover:bg-white/5 transition-colors group flex flex-col justify-center"
-        >
-          <p className="text-[10px] text-gray-500 uppercase font-black mb-1 font-mono tracking-widest">水龙头 / 操作</p>
-          <p className="text-xl font-bold text-yellow-500 group-hover:text-yellow-400">
-            {isGovPending || isGovConfirming ? '交易中...' : '领取治理代币'}
-          </p>
-        </button>
-      </div>
-
-      <div className="space-y-8">
-        <div className="flex items-center justify-between border-b border-white/5 pb-6">
-          <h2 className="text-3xl font-black font-mono tracking-tighter uppercase flex items-center gap-4">
-            测试网代币列表
-            {isLoadingList && <div className="w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>}
-          </h2>
-          <span className="text-xs font-mono text-gray-500 bg-white/5 px-3 py-1 rounded-full border border-white/5">
-            发现: {tokens.length}
-          </span>
-        </div>
-
-        {isGovSuccess && (
-          <div className="bg-green-500/10 border border-green-500/20 text-green-500 p-4 rounded-xl text-center text-sm font-bold font-mono animate-bounce">
-            交易发送成功！
+      {/* Protocol Liquidity Hub */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 card-bg border border-white/10 rounded-[2.5rem] p-8 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8">
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${lpIsAdded ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-500'}`}>
+              <span className={`w-2 h-2 rounded-full ${lpIsAdded ? 'bg-green-500 animate-pulse' : 'bg-yellow-500 animate-bounce'}`}></span>
+              {lpIsAdded ? 'Protocol LP Active' : 'Protocol LP Pending'}
+            </div>
           </div>
-        )}
+          
+          <div className="max-w-md">
+            <h2 className="text-3xl font-black mb-4 uppercase tracking-tighter">流动性管理器 (LP Hub)</h2>
+            <p className="text-gray-400 text-sm font-mono mb-8 leading-relaxed">
+              在此处为 $PRM 协议代币添加初始流动性。系统将自动在 Uniswap 创建交易对并永久销毁 LP 代币以确保安全性。
+            </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <input 
+                  type="number" 
+                  step="0.01"
+                  value={lpEthAmount}
+                  onChange={(e) => setLpEthAmount(e.target.value)}
+                  disabled={!!lpIsAdded}
+                  placeholder="ETH Amount"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-xl font-black focus:outline-none focus:border-green-500/50 disabled:opacity-30"
+                />
+                <span className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-600 font-black text-sm">ETH</span>
+              </div>
+              <button 
+                onClick={handleAddLp}
+                disabled={!isConnected || lpIsAdded || isTxPending || isTxConfirming || !lpEthAmount}
+                className={`px-8 py-4 rounded-2xl font-black uppercase transition-all flex items-center justify-center gap-2 ${lpIsAdded ? 'bg-white/5 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-xl active:scale-95'}`}
+              >
+                {isTxPending || isTxConfirming ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : lpIsAdded ? '已添加流动性' : '添加流动性并销毁 LP'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="card-bg border border-white/10 rounded-[2.5rem] p-8 flex flex-col justify-between">
+           <div>
+             <p className="text-[10px] text-gray-500 uppercase font-black mb-2 font-mono tracking-widest">Protocol Token</p>
+             <p className="text-4xl font-black text-green-500">{coreName?.toString() || 'Loading...'}</p>
+             <div className="mt-4 h-px bg-white/5"></div>
+           </div>
+           
+           <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] text-gray-500 uppercase font-black font-mono">Your $PRM Balance</span>
+                <span className="text-xl font-black text-blue-500">
+                  {isConnected ? (userCoreBalance ? `${parseFloat(formatEther(userCoreBalance as bigint)).toLocaleString()}` : '0') : '--'}
+                </span>
+              </div>
+              <button 
+                onClick={() => writeContract({ address: CORE_ADDRESS as `0x${string}`, abi: CORE_ABI as any, functionName: 'claimGovernanceTokens' })}
+                disabled={!isConnected}
+                className="w-full bg-white/5 border border-white/10 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all disabled:opacity-50"
+              >
+                领取代币 (Faucet)
+              </button>
+           </div>
+        </div>
+      </section>
+
+      <div className="space-y-10">
+        <div className="flex items-center justify-between border-b border-white/10 pb-8">
+          <h2 className="text-4xl font-black font-mono tracking-tighter uppercase flex items-center gap-5">
+            Token Terminal
+            {(isLoadingList || isRefreshing) && <div className="w-6 h-6 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>}
+          </h2>
+          <div className="flex items-center gap-4">
+             <button 
+               onClick={() => fetchTokens(true)} 
+               className="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white transition-colors border border-white/10 px-4 py-2 rounded-xl bg-white/5"
+             >
+               手动同步数据
+             </button>
+             <div className="bg-white/5 px-4 py-2 rounded-2xl border border-white/10 text-xs font-mono text-gray-500">
+               DISCOVERED: {tokens.length}
+             </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
           {isLoadingList && tokens.length === 0 ? (
-            Array(4).fill(0).map((_, i) => <div key={i} className="card-bg pump-border rounded-2xl h-56 animate-pulse"></div>)
+            Array(8).fill(0).map((_, i) => <div key={i} className="card-bg border border-white/5 rounded-3xl h-64 animate-pulse"></div>)
           ) : tokens.length === 0 ? (
-            <div className="col-span-full py-24 text-center">
-              <p className="text-4xl mb-4">🛸</p>
-              <h3 className="text-xl font-bold text-gray-400 mb-2">未找到任何代币</h3>
-              <p className="text-sm text-gray-600 font-mono">请确保合约已在 Base Sepolia (Chain ID: 84532) 上部署。</p>
+            <div className="col-span-full py-32 text-center card-bg border-2 border-dashed border-white/5 rounded-[3rem]">
+              <div className="text-6xl mb-6 grayscale">📡</div>
+              <h3 className="text-2xl font-black text-gray-400 mb-3 uppercase tracking-tighter">No Tokens Found</h3>
+              <p className="text-gray-600 font-mono text-sm max-w-sm mx-auto leading-relaxed">
+                未在 Base Sepolia 上检测到任何已发射代币。
+              </p>
             </div>
           ) : (
             tokens.map((addr) => (
