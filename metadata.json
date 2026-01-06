@@ -1,0 +1,7 @@
+{
+  "name": "FairPraem Pump",
+  "description": "基于 FairPraem 协议的 Pump.fun 风格联合曲线代币发布平台。",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
