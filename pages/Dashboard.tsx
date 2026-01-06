@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useReadContract, usePublicClient, useWriteContract, useAccount, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
 import { CORE_ADDRESS, CORE_ABI, SUBTOKEN_ABI } from '../constants';
-import { formatEther, parseEther } from 'viem';
+import { formatEther, parseEther, parseAbiItem } from 'viem';
 import { baseSepolia } from 'wagmi/chains';
 
 interface TokenCardProps {
@@ -82,35 +82,31 @@ export default function Dashboard() {
   const publicClient = usePublicClient({ chainId: baseSepolia.id });
   const { address: userAddress, isConnected } = useAccount();
 
-  // 1. 获取代币列表的核心逻辑
+  // 1. 改为通过 Logs (事件) 获取代币列表
   const fetchTokens = useCallback(async (showLoading = false) => {
     if (!publicClient) return;
     if (showLoading) setIsLoadingList(true);
     setIsRefreshing(true);
     
-    const loaded: `0x${string}`[] = [];
     try {
-      for (let i = 0; i < 50; i++) {
-        try {
-          const addr = await publicClient.readContract({
-            address: CORE_ADDRESS as `0x${string}`,
-            abi: CORE_ABI as any,
-            functionName: 'allSubTokens',
-            args: [BigInt(i)]
-          });
-          
-          if (addr && addr !== '0x0000000000000000000000000000000000000000') {
-            loaded.push(addr as `0x${string}`);
-          } else {
-            break; 
-          }
-        } catch (e) {
-          break;
-        }
-      }
-      setTokens(loaded.reverse());
+      // 这里的 event ABI 必须与 constants.ts 中的 CORE_ABI 里的 OrgLaunched 匹配
+      const logs = await publicClient.getLogs({
+        address: CORE_ADDRESS as `0x${string}`,
+        event: parseAbiItem('event OrgLaunched(address indexed token, address indexed creator)'),
+        fromBlock: 0n, // 从区块0开始扫描
+        toBlock: 'latest'
+      });
+      
+      // 提取代币地址，去重，并反转（最新的排在前面）
+      const addresses = logs
+        .map(log => log.args.token as `0x${string}`)
+        .filter((addr, index, self) => addr && self.indexOf(addr) === index)
+        .reverse();
+
+      setTokens(addresses);
     } catch (err) {
-      console.error("Dashboard: 列表抓取失败:", err);
+      console.error("Dashboard: 事件日志抓取失败:", err);
+      // 如果日志抓取受限，回退到原始方式（或者提示）
     } finally {
       setIsLoadingList(false);
       setIsRefreshing(false);
@@ -119,7 +115,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchTokens(true);
-    const timer = setInterval(() => fetchTokens(false), 15000);
+    const timer = setInterval(() => fetchTokens(false), 20000);
     return () => clearInterval(timer);
   }, [fetchTokens]);
 
@@ -129,7 +125,8 @@ export default function Dashboard() {
     eventName: 'OrgLaunched',
     chainId: baseSepolia.id,
     onLogs() {
-      fetchTokens(false);
+      // 监听到新事件后稍微延迟一下刷新，给节点同步时间
+      setTimeout(() => fetchTokens(false), 2000);
     },
   });
 
@@ -294,7 +291,7 @@ export default function Dashboard() {
               <div className="text-6xl mb-6 grayscale">📡</div>
               <h3 className="text-2xl font-black text-gray-400 mb-3 uppercase tracking-tighter">No Tokens Found</h3>
               <p className="text-gray-600 font-mono text-sm max-w-sm mx-auto leading-relaxed">
-                未在 Base Sepolia 上检测到任何已发射代币。
+                未在 Base Sepolia 上检测到代币。请确保已连接钱包，且合约 {CORE_ADDRESS} 确实已在此网络部署。
               </p>
             </div>
           ) : (
